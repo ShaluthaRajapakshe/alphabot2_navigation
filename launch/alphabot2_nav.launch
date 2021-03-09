@@ -1,0 +1,75 @@
+<launch>
+<arg name="move_base"              default="true" />
+
+  <!-- Run the map server -->
+  <!--arg name="map_file" default="/home/ba_slam/bagfiles/keller/keller.bag_map.yaml"/>
+  <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" /-->
+  <!-- <remap from="map" to="map_server_map"/>  -->
+
+
+<include file="$(find realsense2_camera)/launch/rs_camera.launch">
+     <arg name="align_depth" value="True" />
+  </include>
+
+  <arg name="rate"  default="10"/>
+  <arg name="decimation"  default="2"/> <!-- Reduce the image size, e.g., 2 means "width/2 x height/2". -->
+  <arg name="approx_sync" default="false" />
+
+  <!-- Use same nodelet used by realsense2 -->
+  <group ns="camera">
+    <node pkg="nodelet" type="nodelet" name="data_throttle" args="load rtabmap_ros/data_throttle realsense2_camera_manager" output="screen">
+
+      <param name="rate" type="double" value="$(arg rate)"/>
+      <param name="decimation" type="int" value="$(arg decimation)"/>
+      <param name="approx_sync" type="bool" value="$(arg approx_sync)"/>
+
+      <remap from="rgb/image_in"       to="color/image_raw"/>
+      <remap from="depth/image_in"     to="aligned_depth_to_color/image_raw"/>
+      <remap from="rgb/camera_info_in" to="color/camera_info"/>
+
+      <remap from="rgb/image_out"       to="data_throttled_image"/>
+      <remap from="depth/image_out"     to="data_throttled_image_depth"/>
+      <remap from="rgb/camera_info_out" to="data_throttled_camera_info"/>
+
+    </node>
+  </group>
+
+  <!--camera tf-->
+<node pkg="tf" type="static_transform_publisher" name="camera_to_baselink" args="0 0 0.1 0 0 0 base_link camera_link 30" />
+<node pkg="tf" type="static_transform_publisher" name="odom_to_map" args="0 0 0 0 0 0 map odom 30" />
+<node pkg="tf" type="static_transform_publisher" name="base_footprint_to_base_link" args="0 0 0 0 0 0 base_footprint base_link 30" />
+
+<!-- Laser topic -->
+	<node pkg="depthimage_to_laserscan" type="depthimage_to_laserscan" name="depthimage_to_laserscan">
+		<remap from="image" to="/camera/depth/image_rect_raw"/>
+		<remap from="camera_info" to="/camera/depth/camera_info"/>	
+	  </node>
+
+  <node name="motion" pkg="alphabot2_ros" type="motion.py"/>
+
+<!-- ROS navigation stack move_base -->
+  <group ns="planner">
+        
+    <node pkg="move_base" type="move_base" respawn="false" name="move_base" output="screen">
+      <param name="base_global_planner" value="navfn/NavfnROS"/>
+    	<rosparam file="$(find alphabot2_navigation)/include/costmap_common_params.yaml" command="load" ns="global_costmap" />
+     	<rosparam file="$(find alphabot2_navigation)/include/costmap_common_params.yaml" command="load" ns="local_costmap" />
+    	<rosparam file="$(find alphabot2_navigation)/include/local_costmap_params.yaml" command="load" ns="local_costmap" />
+    	<rosparam file="$(find alphabot2_navigation)/include/global_costmap_params.yaml" command="load" ns="global_costmap"/>
+    	<rosparam file="$(find alphabot2_navigation)/include/base_local_planner_params.yaml" command="load" />
+      <rosparam file="$(find alphabot2_navigation)/include/move_base_params.yaml" command="load" />
+
+      <remap from="cmd_vel" to="cmd_vel"/>
+      <remap from="odom" to="odom"/>
+      <remap from="move_base_simple/goal" to="rtabmap/goal"/>
+      <remap from="scan" to="scan"/>
+      <remap from="map"     to="/grid_map"/>
+    </node>
+   		
+        <!--param name="cmd_vel/abtr_priority" value="10"/-->
+  </group>
+
+
+
+
+</launch>
